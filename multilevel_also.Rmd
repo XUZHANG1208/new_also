@@ -1,0 +1,98 @@
+---
+title: "CA of also data"
+author: "Xu Zhang"
+date: "2025-05-27"
+output: html_document
+---
+
+```{r setup, include=FALSE}
+knitr::opts_chunk$set(echo = TRUE)
+```
+
+## data summary
+
+data summary. Distribution of focus and position of also in HK and GB English.
+
+```{r }
+also<-read.csv("also.csv", sep=";", stringsAsFactors=TRUE)
+
+summary(also)
+
+#removing empty rows
+cleaned_also <- also[rowSums(is.na(also) | also == "") < ncol(also), ]
+cleaned_also$Variety <- droplevels(cleaned_also$Variety)
+cleaned_also$Focus <- droplevels(cleaned_also$Focus)
+cleaned_also$Position <- droplevels(cleaned_also$Position)
+cleaned_also$Relative_Position <- droplevels(cleaned_also$Relative_Position)
+cleaned_also$be.also <- droplevels(cleaned_also$be.also)
+cleaned_also$R_S_P <- droplevels(cleaned_also$R_S_P)
+summary(cleaned_also)
+
+```
+
+## Make a contingency table
+
+```{r}
+#  contingency table for focus and position
+library("FactoMineR")
+library("factoextra")
+library(ISLR)
+library(tidyverse)
+library(Rfast)
+library(MASS)
+table(cleaned_also$Variety, cleaned_also$Position, cleaned_also$Focus)
+df_table <- as.data.frame(table(cleaned_also$Variety, cleaned_also$Position, cleaned_also$Focus))
+colnames(df_table) <- c("Variety", "Position", "Focus", "Frequency")
+
+
+library(ggplot2)
+ggplot(df_table, aes(x = Variety, y = Frequency, fill = Position)) +
+  geom_bar(stat = "identity", position = "dodge") +
+  facet_wrap(~ Focus) +  # Creates separate plots for each Focus category
+  labs(title = "Distribution by Variety, Position, and Focus",
+       x = "Variety",
+       y = "Frequency") +
+  theme_minimal()
+
+
+focus_position.table <- prop.table(focus_position.table)
+addmargins(hair_eye.table)
+
+```
+## checking variable correlation
+```{r}
+
+```
+
+
+### model fitting and variable identifying
+
+```{r}
+#Due to the overdispersion of data
+library(MASS)
+model_nb <- glm.nb(Frequency ~ Variety + Focus + Position + Variety:Focus + Variety:Position + Focus:Position, data = df_table)
+summary(model_nb)
+
+
+```
+
+```{r}
+# given the theta value above, we try poisson to see whether it works better
+library(lme4)
+model <- glm(Frequency ~ Variety + Focus + Position + Variety:Focus + Variety:Position + Focus:Position, data = df_table, family = "poisson")
+summary(model)
+```
+
+#model fitting
+```{r}
+library(pscl)
+pR2(model)
+
+```
+#another model
+```{r}
+model2 <- glmer(Frequency ~ Variety:Focus + Variety:Position + (1|Variety), data = df_table, family = "poisson")
+summary(model2)
+
+```
+
