@@ -30,10 +30,10 @@ summary(cleaned_also)
 
 ```
 
-## Make a contingency table
+## Make a table
 
 ```{r}
-#  contingency table for focus and position
+#  table for focus and position
 library("FactoMineR")
 library("factoextra")
 library(ISLR)
@@ -59,40 +59,149 @@ focus_position.table <- prop.table(focus_position.table)
 addmargins(hair_eye.table)
 
 ```
-## checking variable correlation
+## multinomial logistic regression model
 ```{r}
+library(nnet)
+cleaned_also$NestedVarietyFocus <- interaction(cleaned_also$Variety, cleaned_also$Focus)  # Create nested variable
+
+model_multinom <- multinom(Position ~ Variety + Focus + NestedVarietyFocus, data = cleaned_also)
+summary(model_multinom)
 
 ```
 
 
-### model fitting and variable identifying
+### testing p-values
 
 ```{r}
-#Due to the overdispersion of data
-library(MASS)
-model_nb <- glm.nb(Frequency ~ Variety + Focus + Position + Variety:Focus + Variety:Position + Focus:Position, data = df_table)
-summary(model_nb)
+
+z_values <- summary(model_multinom)$coefficients / summary(model_multinom)$standard.errors
+p_values <- 2 * (1 - pnorm(abs(z_values)))
+print(p_values)
+
+
+```
+###displaying results
+```{r, echo=FALSE, results='asis'}
+install.packages(c("broom", "kableExtra", "knitr"))
+library(broom)
+library(kableExtra)
+library(knitr)# Load package
+tidy(model_multinom, conf.int = TRUE, exponentiate = TRUE) %>%
+  kable() %>%
+  kable_styling("basic", full_width = FALSE)
+```
+
+### multinomial model 2 -- only nested results
+```{r}
+library(nnet)
+model_multinom2 <- multinom(Position ~ Variety + Focus, data = cleaned_also)
+summary(model_multinom2)
+```
+
+# displaying model2
+```{r}
+z_values <- summary(model_multinom2)$coefficients / summary(model_multinom2)$standard.errors
+p_values <- 2 * (1 - pnorm(abs(z_values)))
+print(p_values)
+
+```
+```{r echo=FALSE, results='asis}
+install.packages(c("broom", "kableExtra", "knitr"))
+library(broom)
+library(kableExtra)
+library(knitr)
+tidy(model_multinom2, conf.int = TRUE, exponentiate = TRUE) %>%
+  kable() %>%
+  kable_styling("basic", full_width = FALSE)
+```
+
+
+# plotting effects - post-adjacent
+```{r}
+library(ggeffects)
+ggeffect(model_multinom2, terms = "Variety") %>%
+  plot()
+```
+#plotting effect - focus
+```{r}
+ggeffect(model_multinom2, terms = "Focus") %>%
+  plot()
+```
+
+# conditional random forest
+```{r}
+library(party)
+model_crf <- cforest(Position ~ Variety + Focus + NestedVarietyFocus, 
+                     data = cleaned_also, 
+                     controls = cforest_unbiased(ntree = 500, mtry = 2))  
+# Displays importance ranking
+library(vip)
+vip(model_crf)  # Displays variable importance
+
+```
+
+
+#simpler model
+```{r}
+
+model_multinom2 <- multinom(Position ~ Variety + Focus, data = cleaned_also)
+summary(model_multinom2)
+
+```
+
+Standard Errors are excessively high, which suggests unstable parameter estimation. This could be due to:
+Multicollinearity: Some variables may be highly correlated.
+Overparameterization: Too many interactions that add noise rather than meaningful insights.
+
+#visualizing single tree
+```{r}
+library(party)
+
+print(getTree(model_crf, 1, labelVar = TRUE))
+
+
+
+```
+#partial effect plots
+```{r}
+library(randomForest)
+plot(model_crf)
+
 
 
 ```
 
 ```{r}
-# given the theta value above, we try poisson to see whether it works better
-library(lme4)
-model <- glm(Frequency ~ Variety + Focus + Position + Variety:Focus + Variety:Position + Focus:Position, data = df_table, family = "poisson")
-summary(model)
-```
-
-#model fitting
-```{r}
+#model2 predictability 
 library(pscl)
-pR2(model)
+pR2(model2)
+```
+# model 3
+```{r}
+model3 <- glm(Frequency ~ Focus * Position, data = df_table, family = "poisson")
+summary(model3)
 
 ```
-#another model
+## model 4 generalized mixed linear model
 ```{r}
-model2 <- glmer(Frequency ~ Variety:Focus + Variety:Position + (1|Variety), data = df_table, family = "poisson")
-summary(model2)
+library(lme4)
+model4 <- glmer(Frequency ~ Variety * Focus + Variety * Position + (1 | Variety) + (1 | Variety:Focus) + (1 | Variety:Position), data = df_table, family = "poisson")
+summary(model4)
+```
+```{r}
+model5 <- glmer(Frequency ~ Variety * Focus + Variety * Position + (1 | Variety), data = df_table, family = "poisson")
+summary(model5)
+```
+#model comparison
+
+```{r}
+AIC(model2, model4, model5)
+```
+
+# dependency checking
+```{r}
+library(car)
+vif(glm(Frequency ~ Variety + Focus + Position, data = df_table, family = "poisson"))
 
 ```
 
