@@ -30,7 +30,7 @@ summary(cleaned_also)
 
 ```
 
-## Make a table
+## Make a table and ploting the general data distribution
 
 ```{r}
 #  table for focus and position
@@ -59,6 +59,17 @@ focus_position.table <- prop.table(focus_position.table)
 addmargins(hair_eye.table)
 
 ```
+small dataset
+unbalanced data distribution
+a few independent variabels
+-- try with nnet() first and then glmnet() if overfitting or multicolinearity are spotted
+
+##data regularization
+```{r}
+table(cleaned_also$Position)
+
+```
+
 ## multinomial logistic regression model
 ```{r}
 library(nnet)
@@ -115,93 +126,114 @@ tidy(model_multinom2, conf.int = TRUE, exponentiate = TRUE) %>%
   kable_styling("basic", full_width = FALSE)
 ```
 
-
-# plotting effects - post-adjacent
-```{r}
-library(ggeffects)
-ggeffect(model_multinom2, terms = "Variety") %>%
-  plot()
-```
-#plotting effect - focus
-```{r}
-ggeffect(model_multinom2, terms = "Focus") %>%
-  plot()
-```
-
-# conditional random forest
-```{r}
-library(party)
-model_crf <- cforest(Position ~ Variety + Focus + NestedVarietyFocus, 
-                     data = cleaned_also, 
-                     controls = cforest_unbiased(ntree = 500, mtry = 2))  
-# Displays importance ranking
-library(vip)
-vip(model_crf)  # Displays variable importance
-
-```
-
-
-#simpler model
-```{r}
-
-model_multinom2 <- multinom(Position ~ Variety + Focus, data = cleaned_also)
-summary(model_multinom2)
-
-```
-
-Standard Errors are excessively high, which suggests unstable parameter estimation. This could be due to:
-Multicollinearity: Some variables may be highly correlated.
-Overparameterization: Too many interactions that add noise rather than meaningful insights.
-
-#visualizing single tree
-```{r}
-library(party)
-
-print(getTree(model_crf, 1, labelVar = TRUE))
-
-
-
-```
-#partial effect plots
-```{r}
-library(randomForest)
-plot(model_crf)
-
-
-
-```
-
-```{r}
-#model2 predictability 
-library(pscl)
-pR2(model2)
-```
-# model 3
-```{r}
-model3 <- glm(Frequency ~ Focus * Position, data = df_table, family = "poisson")
-summary(model3)
-
-```
-## model 4 generalized mixed linear model
-```{r}
-library(lme4)
-model4 <- glmer(Frequency ~ Variety * Focus + Variety * Position + (1 | Variety) + (1 | Variety:Focus) + (1 | Variety:Position), data = df_table, family = "poisson")
-summary(model4)
-```
-```{r}
-model5 <- glmer(Frequency ~ Variety * Focus + Variety * Position + (1 | Variety), data = df_table, family = "poisson")
-summary(model5)
-```
-#model comparison
-
-```{r}
-AIC(model2, model4, model5)
-```
-
-# dependency checking
+#checking multicolinearity
 ```{r}
 library(car)
-vif(glm(Frequency ~ Variety + Focus + Position, data = df_table, family = "poisson"))
+vif(model_multinom2)
+```
+
+# refining model by removing non-significant effects
+```{r}
+
+model_refined <- multinom(Position ~ Variety, data = cleaned_also)
+summary(model_refined)
+z_values <- summary(model_refined)$coefficients / summary(model_refined)$standard.errors
+p_values <- 2 * (1 - pnorm(abs(z_values)))
+print(p_values)
+library(broom)
+library(kableExtra)
+library(knitr)
+tidy(model_refined, conf.int = TRUE, exponentiate = TRUE) %>%
+  kable() %>%
+  kable_styling("basic", full_width = FALSE)
 
 ```
+
+```{r}
+library(ggeffects)
+ggeffect(model_refined, terms = "Variety") %>%
+  plot()
+```
+
+
+
+# refining model with only nested effects
+```{r}
+model_refined2 <- multinom(Position ~ NestedVarietyFocus, data = cleaned_also)
+summary(model_refined2)
+z_values <- summary(model_refined2)$coefficients / summary(model_refined2)$standard.errors
+p_values <- 2 * (1 - pnorm(abs(z_values)))
+print(p_values)
+library(broom)
+library(kableExtra)
+library(knitr)
+tidy(model_refined2, conf.int = TRUE, exponentiate = TRUE) %>%
+  kable() %>%
+  kable_styling("basic", full_width = FALSE)
+```
+poor model fitting
+
+# refining model with only focus
+```{r}
+model_refined3 <- multinom(Position ~ Focus, data = cleaned_also)
+summary(model_refined3)
+z_values <- summary(model_refined2)$coefficients / summary(model_refined3)$standard.errors
+p_values <- 2 * (1 - pnorm(abs(z_values)))
+print(p_values)
+library(broom)
+library(kableExtra)
+library(knitr)
+tidy(model_refined3, conf.int = TRUE, exponentiate = TRUE) %>%
+  kable() %>%
+  kable_styling("basic", full_width = FALSE)
+```
+
+poor model fitting
+
+# trying with glmnet()
+```{r}
+library(glmnet)
+
+x <- model.matrix(Position ~ Variety, data = cleaned_also)[,-1]  # Convert categorical to matrix
+y <- cleaned_also$Position  # Ensure it's a factor
+
+
+# Lasso regression (alpha = 1)
+x <- model.matrix(Position ~ Variety, data = cleaned_also)[,-1]  # Convert categorical predictor to matrix format
+y <- as.numeric(cleaned_also$Position)  # Convert factor to numeric codes
+levels(cleaned_also$Position)
+
+str(x)  # Check structure of predictors
+str(y)  # Check structure of response variable
+sum(is.na(x))  # Check for missing values in predictors
+sum(is.na(y))  # Check for missing values in response
+
+cv_model <- cv.glmnet(x, y, family = "multinomial", alpha = 1, nfolds = 3)
+sum(is.na(cleaned_also))
+
+plot(cv_model)  # Check optimal lambda
+
+best_lambda <- cv_model$lambda.min  # Get best regularization strength
+
+model_lasso <- glmnet(x, y, family = "multinomial", alpha = 1, lambda = best_lambda)
+summary(model_lasso)
+
+```
+
+```{r}
+
+```
+
+# plotting effects 
+```{r}
+
+```
+
+
+```{r}
+
+
+```
+
+
 
